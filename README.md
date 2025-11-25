@@ -1,6 +1,6 @@
 # Compressed Sensing for Audio Signal
 
-Pipeline to compress audio by randomly sampling with small of samples and reconstruct using DCT + FISTA / LASSO / OMP.
+Pipeline to compress audio by randomly sampling with a small number of samples and reconstruct using DCT + FISTA / LASSO / OMP.
 
 
 1. Using the CLI
@@ -24,13 +24,15 @@ Encode (compress) a single WAV file:
         --frame_size 2048 \
         --overlap 0.5 \
         --seed 42
+        
 Decode (reconstruct) the compressed file:
 
     python -m src.cs_audio_cli decode \
         --cs path/to/output_compressed.npz \
         --out path/to/output_reconstructed.wav \
         --solver fista
-R is the compression ratio (e.g., 0.1 = 10% of original samples)
+        
+R is the compression ratio (e.g., 0.15 = 15% of the original samples)
 
 solver can be fista, lasso, or omp
 
@@ -48,4 +50,4 @@ For interactive exploration and visualization:
 
 - Switch between FISTA, LASSO, and OMP
 
-Click here to open the demo notebook
+Open the demo notebook by clicking this link: https://github.com/milanto-hery/compressed-sensing-audio/blob/main/notebook/demos.ipynb
