@@ -2,7 +2,6 @@ import streamlit as st
 import os
 import sys
 import tempfile
-import glob
 
 # Add parent folder for module import
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -10,21 +9,24 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.cs_batch import run_cs_batch
 
 # -------------------------------------------------------------
-# Streamlit UI
+# Streamlit Setup
 # -------------------------------------------------------------
 st.set_page_config(page_title="Compressed Sensing Batch App", layout="wide")
 st.title("Compressed Sensing Audio – Batch Processing")
 
 st.markdown("""
-Upload multiple WAV files and process them using compressed sensing.
-Supports FISTA, LASSO, and OMP.
+Upload multiple WAV files from your computer and process them using 
+**FISTA**, **LASSO**, or **OMP** compressed sensing reconstruction.
 """)
 
 # -------------------------------------------------------------
-# Session state
+# Session State
 # -------------------------------------------------------------
 if "uploaded_files" not in st.session_state:
     st.session_state["uploaded_files"] = []
+
+if "outputs" not in st.session_state:
+    st.session_state["outputs"] = []
 
 if "progress" not in st.session_state:
     st.session_state["progress"] = 0
@@ -37,16 +39,15 @@ if "output_folder" not in st.session_state:
 
 
 # -------------------------------------------------------------
-# LEFT: Upload + preview
+# LEFT: FILE UPLOAD + OUTPUT FOLDER
 # -------------------------------------------------------------
 left, right = st.columns([2, 3])
 
 with left:
-    st.subheader("Upload WAV files")
-
+    st.subheader("Upload WAV Files")
     uploaded = st.file_uploader(
-        "Select multiple WAV/WA files",
-        type=["wav", "WA"],
+        "Select .wav files (multiple allowed)",
+        type=["wav"],
         accept_multiple_files=True
     )
 
@@ -54,34 +55,26 @@ with left:
         st.session_state["uploaded_files"] = uploaded
         st.success(f"{len(uploaded)} files uploaded.")
 
-        # Preview first 3
-        st.text_area(
-            "Preview (first 3 files):",
-            "\n".join([f.name for f in uploaded[:3]]),
-            height=100
-        )
 
-    # Output folder
     st.subheader("Output Folder Name")
-    output_folder = st.text_input("Name:", value=st.session_state["output_folder"])
+    output_folder = st.text_input("Folder:", value=st.session_state["output_folder"])
     st.session_state["output_folder"] = output_folder
 
-    # Create folder
     if not os.path.exists(output_folder):
         os.makedirs(output_folder, exist_ok=True)
 
 
 # -------------------------------------------------------------
-# RIGHT: Parameters
+# RIGHT: PARAMETERS + RUN BUTTON
 # -------------------------------------------------------------
 with right:
     st.subheader("Processing Parameters")
 
     solver = st.selectbox("Algorithm", ["fista", "lasso", "omp"])
 
-    R = st.slider("Compression ratio R", 0.01, 1.0, 0.1, 0.01)
+    R = st.slider("Compression Ratio R", 0.01, 1.0, 0.1, 0.01)
 
-    overlap = st.slider("Frame overlap", 0.0, 0.9, 0.5, 0.05)
+    overlap = st.slider("Frame Overlap", 0.0, 0.9, 0.5, 0.05)
 
     frame_size = st.selectbox(
         "Frame Size (samples)",
@@ -89,47 +82,100 @@ with right:
         index=2
     )
 
+    st.markdown("### ")
+    run_button = st.button("🚀 Run Batch Processing", use_container_width=True)
+
 
 # -------------------------------------------------------------
-# Convert uploaded files to temporary folder for batch process
+# Helper: Save uploaded files to a temporary folder
 # -------------------------------------------------------------
 def prepare_temp_folder(uploaded_files):
     temp_dir = tempfile.mkdtemp()
-
-    for f in uploaded_files:
-        file_path = os.path.join(temp_dir, f.name)
-        with open(file_path, "wb") as out:
-            out.write(f.read())
-
+    paths = []
+    for file in uploaded_files:
+        temp_path = os.path.join(temp_dir, file.name)
+        with open(temp_path, "wb") as f:
+            f.write(file.read())
+        paths.append(temp_path)
     return temp_dir
 
 
 # -------------------------------------------------------------
-# Run button
+# RUN BATCH PROCESSING
 # -------------------------------------------------------------
-if st.button("🚀 Run Batch Processing"):
+if run_button:
     if not st.session_state["uploaded_files"]:
         st.error("Please upload WAV files first.")
     else:
         st.success("Starting batch processing…")
 
+        # prepare temporary input folder
         temp_input = prepare_temp_folder(st.session_state["uploaded_files"])
 
-        # Call your batch processor
-        run_cs_batch(
-            input_folder=temp_input,
-            output_folder=output_folder,
-            solver=solver,
-            R=R,
-            overlap=overlap,
-            frame_size=frame_size,
-            update_fn=lambda p, txt: (
-                st.session_state.update({"progress": p, "progress_text": txt})
+        # reset output list
+        st.session_state["outputs"] = []
+
+        # Get number of files
+        wav_files = [f.name for f in st.session_state["uploaded_files"]]
+        total_files = len(wav_files)
+
+        # Progress bar widget
+        overall_progress = st.progress(0)
+        status = st.empty()
+
+        current_index = 0
+
+        # Process one file at a time manually
+        import glob
+        import shutil
+        from src.compress import encode_audio_global
+        from src.reconstruct import decode_and_reconstruct
+
+        for file in glob.glob(os.path.join(temp_input, "*.wav")):
+
+            filename = os.path.basename(file)
+            status.write(f"Processing: **{filename}**")
+
+            # Output paths
+            name = os.path.splitext(filename)[0]
+            cs_file = os.path.join(temp_input, f"{name}.npz")
+            out_wav = os.path.join(output_folder, f"{name}_rec.wav")
+
+            # Encode + reconstruct
+            encode_audio_global(
+                file, cs_file,
+                R=R, frame_size=frame_size,
+                overlap=overlap, seed=0
             )
-        )
+
+            decode_and_reconstruct(
+                cs_file, out_wav,
+                solver=solver, n_jobs=-1
+            )
+
+            # save for download
+            st.session_state["outputs"].append(out_wav)
+
+            # update progress
+            current_index += 1
+            overall_progress.progress(current_index / total_files)
+
+
+        status.write("✔ All files processed!")
+
 
 # -------------------------------------------------------------
-# Progress display
+# DOWNLOAD LINKS
 # -------------------------------------------------------------
-st.progress(st.session_state["progress"])
-st.write(st.session_state["progress_text"])
+if st.session_state["outputs"]:
+    st.subheader("Download Reconstructed Files")
+
+    for path in st.session_state["outputs"]:
+        filename = os.path.basename(path)
+        with open(path, "rb") as f:
+            st.download_button(
+                label=f"⬇ Download {filename}",
+                data=f.read(),
+                file_name=filename,
+                mime="audio/wav"
+            )
