@@ -1,8 +1,5 @@
 import streamlit as st
-# import os
 import glob
-# from src.cs_batch import run_cs_batch
-
 import sys
 import os
 
@@ -16,8 +13,6 @@ from src.reconstruct import decode_and_reconstruct
 
 st.set_page_config(page_title="Compressed Sensing Audio - Batch", layout="wide")
 st.title("Compressed Sensing Algorithm for Audio Signals")
-
-#st.title("Compressed Sensing Audio - Batch Processor")
 st.markdown("""
 Compress and reconstruct multiple WAV files using compressed sensing.
 Supports FISTA, LASSO, and OMP reconstruction.
