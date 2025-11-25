@@ -3,43 +3,57 @@ import glob
 import sys
 import os
 
-# Add the parent folder to PYTHONPATH so "src" can be imported
+# Add parent folder to Python path (for src imports)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.cs_batch import run_cs_batch
 from src.compress import encode_audio_global
 from src.reconstruct import decode_and_reconstruct
 
-
+# Streamlit UI
 st.set_page_config(page_title="Compressed Sensing Audio - Batch", layout="wide")
 st.title("Compressed Sensing Algorithm for Audio Signals")
+
 st.markdown("""
-Compress and reconstruct multiple WAV files using compressed sensing.
-Supports FISTA, LASSO, and OMP reconstruction.
+Process batches of WAV files using compressed sensing.
+This version works both **offline** and on **Streamlit Cloud**.
 """)
 
-# Initialize session state ---
+# Session state
 if 'batch_running' not in st.session_state:
     st.session_state['batch_running'] = False
 if 'progress' not in st.session_state:
     st.session_state['progress'] = 0
 if 'progress_text' not in st.session_state:
     st.session_state['progress_text'] = ""
-if 'input_folder' not in st.session_state:
-    st.session_state['input_folder'] = ""
 if 'output_folder' not in st.session_state:
     st.session_state['output_folder'] = "saved_results"
+
+# List of files
+base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+folders = [f for f in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, f))]
+
+# Filter only folders containing WAV files
+wav_folders = []
+for f in folders:
+    full = os.path.join(base_path, f)
+    if glob.glob(os.path.join(full, "*.wav")):
+        wav_folders.append(f)
 
 # Layout
 left_col, right_col = st.columns([2,3])
 
-# Left column: input folder + show files
+# Folder selection
 with left_col:
     st.subheader("Input Folder")
-    input_folder = st.text_input("Paste input folder path here:", value=st.session_state['input_folder'])
-    st.session_state['input_folder'] = input_folder
 
-    if input_folder and os.path.exists(input_folder):
+    if not wav_folders:
+        st.error("⚠️ No folder containing WAV files found in the repository.")
+    else:
+        input_folder_name = st.selectbox("Choose folder with WAV files:", wav_folders)
+        input_folder = os.path.join(base_path, input_folder_name)
+
+        # Display preview
         if st.button("Show first 3 WAV files"):
             files = glob.glob(os.path.join(input_folder, "*.wav"))
             st.text_area(
@@ -47,71 +61,47 @@ with left_col:
                 "\n".join([os.path.basename(f) for f in files[:3]]),
                 height=100
             )
-    else:
-        st.warning("Folder does not exist or is empty.")
 
-    output_folder = st.text_input("Output folder name", value=st.session_state['output_folder'])
-    st.session_state['output_folder'] = output_folder
+    # Output folder
+    st.subheader("Output Folder")
+    output_name = st.text_input("Folder name", value=st.session_state['output_folder'])
+    st.session_state['output_folder'] = output_name
+    output_folder = os.path.join(base_path, output_name)
 
-# Right column: parameters
+    # Auto-create output folder
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder, exist_ok=True)
+
+# Parameters
 with right_col:
     st.subheader("Batch Parameters")
     solver = st.selectbox("Algorithm", ["fista", "lasso", "omp"])
     R = st.slider("Compression ratio R", 0.01, 1.0, 0.1, 0.01)
     overlap = st.slider("Frame overlap", 0.0, 0.9, 0.5, 0.05)
-    seed = st.number_input("Random seed", 0, 9999, 42)
 
-    # Frame size as selectbox
-    frame_size = st.selectbox(
-        "Frame size",
-        options=[32, 64, 128, 256, 512, 1024, 2048],
-        index=6  # default 2048
-    )
+# -------------------------------------------------------------
+# Run buttoms
+start_col, stop_col = st.columns([1,1])
 
-# Progress UI
-st.subheader("Progress")
-progress_bar = st.progress(st.session_state['progress'])
-progress_text = st.empty()
-progress_text.text(st.session_state['progress_text'])
-
-# Run batch function
-def run_batch():
-    if not st.session_state['input_folder'] or not os.path.exists(st.session_state['input_folder']):
-        st.error("Please provide a valid input folder!")
-        return
-
-    st.session_state['batch_running'] = True
-    output_folder_full = os.path.join(os.path.dirname(st.session_state['input_folder']),
-                                      st.session_state['output_folder'])
-    os.makedirs(output_folder_full, exist_ok=True)
-
-    wav_files = glob.glob(os.path.join(st.session_state['input_folder'], '*.wav'))
-    total_files = len(wav_files)
-
-    for i, wav_path in enumerate(wav_files, 1):
-        name = os.path.splitext(os.path.basename(wav_path))[0]
-        cs_file = os.path.join(output_folder_full, f"{name}.npz")
-        out_wav = os.path.join(output_folder_full, f"{name}_rec.wav")
+with start_col:
+    if st.button("🚀 Run Batch Processing"):
+        st.session_state['batch_running'] = True
 
         run_cs_batch(
-            input_folder=st.session_state['input_folder'],
-            output_folder=output_folder_full,
-            R=R,
+            input_folder=input_folder,
+            output_folder=output_folder,
             solver=solver,
-            frame_size=frame_size,
+            R=R,
             overlap=overlap,
-            seed=seed
+            update_fn=lambda p, txt: (
+                p := st.session_state.update({"progress": p, "progress_text": txt})
+            )
         )
 
-        # Update progress
-        st.session_state['progress'] = i / total_files
-        st.session_state['progress_text'] = f"Processing {i}/{total_files} files..."
-        progress_bar.progress(st.session_state['progress'])
-        progress_text.text(st.session_state['progress_text'])
+with stop_col:
+    if st.button("⛔ Cancel", type="secondary"):
+        st.warning("Stop functionality not implemented yet.")
 
-    st.session_state['batch_running'] = False
-    st.success("Batch processing completed!")
-
-# Run button
-if st.button("Run Batch Processing") and not st.session_state['batch_running']:
-    run_batch()
+# Progress bar
+st.progress(st.session_state['progress'])
+st.write(st.session_state['progress_text'])
