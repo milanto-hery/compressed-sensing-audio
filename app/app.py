@@ -8,9 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.cs_batch import run_cs_batch
 
-# -------------------------------------------------------------
 # Streamlit Setup
-# -------------------------------------------------------------
 st.set_page_config(page_title="Compressed Sensing Batch App", layout="wide")
 st.title("Compressed Sensing Audio – Batch Processing")
 
@@ -19,9 +17,7 @@ Upload multiple WAV files from your computer and process them using
 **FISTA**, **LASSO**, or **OMP** compressed sensing reconstruction.
 """)
 
-# -------------------------------------------------------------
 # Session State
-# -------------------------------------------------------------
 if "uploaded_files" not in st.session_state:
     st.session_state["uploaded_files"] = []
 
@@ -38,9 +34,7 @@ if "output_folder" not in st.session_state:
     st.session_state["output_folder"] = "saved_results"
 
 
-# -------------------------------------------------------------
-# LEFT: FILE UPLOAD + OUTPUT FOLDER
-# -------------------------------------------------------------
+# File upload and output folder
 left, right = st.columns([2, 3])
 
 with left:
@@ -64,9 +58,8 @@ with left:
         os.makedirs(output_folder, exist_ok=True)
 
 
-# -------------------------------------------------------------
-# RIGHT: PARAMETERS + RUN BUTTON
-# -------------------------------------------------------------
+
+# Parameters and run button
 with right:
     st.subheader("Processing Parameters")
 
@@ -85,10 +78,7 @@ with right:
     st.markdown("### ")
     run_button = st.button("🚀 Run Batch Processing", use_container_width=True)
 
-
-# -------------------------------------------------------------
 # Helper: Save uploaded files to a temporary folder
-# -------------------------------------------------------------
 def prepare_temp_folder(uploaded_files):
     temp_dir = tempfile.mkdtemp()
     paths = []
@@ -100,9 +90,8 @@ def prepare_temp_folder(uploaded_files):
     return temp_dir
 
 
-# -------------------------------------------------------------
-# RUN BATCH PROCESSING
-# -------------------------------------------------------------
+
+# Run the process
 if run_button:
     if not st.session_state["uploaded_files"]:
         st.error("Please upload WAV files first.")
@@ -164,9 +153,7 @@ if run_button:
         status.write("✔ All files processed!")
 
 
-# -------------------------------------------------------------
-# DOWNLOAD LINKS
-# -------------------------------------------------------------
+# Download links for the reconstructed files
 if st.session_state["outputs"]:
     st.subheader("Download Reconstructed Files")
 
